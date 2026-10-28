@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ずんだもん読み上げ</title>
+<style>
+  :root {
+    --bg: #f4f8ef;
+    --card: #ffffff;
+    --ink: #22301c;
+    --muted: #66735f;
+    --accent: #5fae3c;
+    --accent-dark: #3f8a22;
+    --line: #d9e4d0;
+    --hl: #e3f5d6;
+    --row-hover: #f3f7ef;
+    --code: #f0f3ec;
+    --err: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141a11; --card: #1d2519; --ink: #e4ecdc; --muted: #9aa891;
+      --accent: #6fbf4a; --accent-dark: #8ad466; --line: #33402c;
+      --hl: #2a3d20; --row-hover: #243020; --code: #27321f; --err: #ff7b6b;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    line-height: 1.6;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  header .logo {
+    width: 44px; height: 44px; border-radius: 50%; background: var(--accent);
+    display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 20px; flex: none;
+  }
+  h1 { font-size: 22px; margin: 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  textarea {
+    width: 100%; min-height: 220px; resize: vertical; padding: 12px; color: var(--ink); background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 16px;
+  }
+  textarea:focus, input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .meta { font-size: 12px; color: var(--muted); text-align: right; margin-top: 4px; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 20px; }
+  label { font-size: 13px; color: var(--muted); display: block; }
+  label span { float: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, input[type=text], input[type=password] {
+    width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit;
+    background: var(--card); color: var(--ink);
+  }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  button {
+    font: inherit; font-weight: 600; padding: 10px 18px; border-radius: 999px;
+    border: 1px solid var(--accent); background: var(--card); color: var(--accent-dark); cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: #fff; }
+  button.primary:hover { background: var(--accent-dark); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 12px; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  #chunks { max-height: 320px; overflow-y: auto; font-size: 15px; }
+  #chunks .row { display: flex; gap: 8px; align-items: baseline; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+  #chunks .row:hover { background: var(--row-hover); }
+  #chunks .row.now { background: var(--hl); font-weight: 600; }
+  #chunks .row.done { color: var(--muted); }
+  #chunks .row p { margin: 0; flex: 1; min-width: 0; }
+  #chunks .row a { font-size: 12px; color: var(--accent-dark); white-space: nowrap; }
+  .msg { font-size: 14px; margin-top: 8px; min-height: 1.4em; }
+  .msg.err { color: var(--err); }
+  details { font-size: 14px; }
+  details code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+  a { color: var(--accent-dark); }
+  footer { font-size: 12px; color: var(--muted); text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="logo">ず</div>
+    <h1>ずんだもん読み上げ</h1>
+  </header>
+
+  <section class="card">
+    <textarea id="text" placeholder="ここに読み上げたいテキストを貼り付けるのだ。"></textarea>
+    <div class="meta"><span id="count">0</span> 文字</div>
+  </section>
+
+  <section class="card">
+    <div class="controls">
+      <div>
+        <label for="style">声のスタイル</label>
+        <select id="style">
+          <option value="3">ノーマル</option>
+          <option value="1">あまあま</option>
+          <option value="7">ツンツン</option>
+          <option value="5">セクシー</option>
+          <option value="22">ささやき</option>
+          <option value="38">ヒソヒソ</option>
+          <option value="75">ヘロヘロ</option>
+          <option value="76">なみだめ</option>
+        </select>
+      </div>
+      <div><label for="speed">話速 <span id="speedV">1.00</span></label><input type="range" id="speed" min="0.5" max="2" step="0.05" value="1"></div>
+      <div><label for="volume">音量 <span id="volumeV">1.00</span></label><input type="range" id="volume" min="0" max="1" step="0.05" value="1"></div>
+    </div>
+    <div class="progress"><div id="bar"></div></div>
+    <div class="buttons">
+      <button class="primary" id="play">▶ 読み上げ</button>
+      <button id="pause" disabled>⏸ 一時停止</button>
+      <button id="stop" disabled>■ 停止</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </section>
+
+  <section class="card" id="chunkCard" hidden>
+    <div id="chunks"></div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>設定・使い方</summary>
+      <p>音声は <a href="https://voicevox.su-shiki.com/su-shikiapis/" target="_blank" rel="noopener">WEB版VOICEVOX API（su-shiki）</a> で作ります。入力した文章はこのサービスに送られます。</p>
+      <p>APIキーなしでも使えますが、1回の音声生成に30秒ほどかかることがあります。上記ページで無料のAPIキーを取得して入力すると速くなります（キーはこの端末のブラウザにだけ保存されます）。</p>
+      <label for="apikey">APIキー（任意）</label>
+      <input type="password" id="apikey" autocomplete="off" placeholder="未入力なら低速版を使います">
+      <p>文章は200文字前後のまとまりに分けて順に読み上げます。一覧の行をクリックするとそこから読み始め、「MP3」から音声ファイルを開けます。</p>
+    </details>
+  </section>
+
+  <footer>VOICEVOX:ずんだもん</footer>
+</main>
+
+<script>
+const API = 'https://api.tts.quest/v3/voicevox/synthesis';
+const CHUNK = 200;
+const $ = id => document.getElementById(id);
+const els = {
+  text: $('text'), count: $('count'), style: $('style'), speed: $('speed'), volume: $('volume'), apikey: $('apikey'),
+  play: $('play'), pause: $('pause'), stop: $('stop'), bar: $('bar'), msg: $('msg'),
+  chunks: $('chunks'), chunkCard: $('chunkCard'),
+};
+
+let session = null; // { abort, audio, paused }
+
+const store = {
+  get(k) { try { return localStorage.getItem('zunda:' + k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem('zunda:' + k, v); } catch {} },
+};
+
+for (const k of ['text', 'style', 'speed', 'volume', 'apikey']) {
+  const v = store.get(k);
+  if (v !== null) els[k].value = v;
+  els[k].addEventListener('input', () => store.set(k, els[k].value));
+}
+for (const k of ['speed', 'volume']) {
+  const show = () => { $(k + 'V').textContent = Number(els[k].value).toFixed(2); applyAudioSettings(); };
+  els[k].addEventListener('input', show);
+  show();
+}
+const updateCount = () => { els.count.textContent = els.text.value.length; };
+els.text.addEventListener('input', updateCount);
+updateCount();
+
+function setMsg(text, isErr = false) {
+  els.msg.textContent = text;
+  els.msg.className = 'msg' + (isErr ? ' err' : '');
+}
+
+// 文に分け、CHUNK文字前後のまとまりにする（API呼び出し回数を減らすため）
+function splitText(text) {
+  const sentences = [];
+  for (const line of text.split(/\n+/)) {
+    const parts = line.match(/[^。！？!?]+[。！？!?」』）)]*|[。！？!?]+/g) || [];
+    for (let s of parts) {
+      s = s.trim();
+      while (s.length > CHUNK) {
+        const cut = s.lastIndexOf('、', CHUNK);
+        const at = cut > 20 ? cut + 1 : CHUNK;
+        sentences.push(s.slice(0, at));
+        s = s.slice(at).trim();
+      }
+      if (/[^\s。、！？!?・…「」『』（）()]/.test(s)) sentences.push(s);
+    }
+  }
+  const chunks = [];
+  let cur = '';
+  for (const s of sentences) {
+    if (cur && cur.length + s.length > CHUNK) { chunks.push(cur); cur = ''; }
+    cur += s;
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
+}
+
+const sleep = (ms, signal) => new Promise((resolve, reject) => {
+  const t = setTimeout(resolve, ms);
+  signal?.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('aborted', 'AbortError')); }, { once: true });
+});
+
+// APIは混雑時に429とretryAfterを返すので、待ってから再試行する
+async function synth(text, signal, onWait) {
+  const params = new URLSearchParams({ text, speaker: els.style.value });
+  const key = els.apikey.value.trim();
+  if (key) params.set('key', key);
+  let data;
+  for (let tries = 0; ; tries++) {
+    const res = await fetch(`${API}?${params}`, { signal });
+    data = await res.json();
+    if (data.success) break;
+    if (data.retryAfter && tries < 30) {
+      onWait?.('混雑しているので少し待っているのだ…');
+      await sleep((data.retryAfter + 0.5) * 1000, signal);
+      continue;
+    }
+    if (data.isApiKeyValid === false && key) throw new Error('APIキーが正しくないのだ。設定を確認してほしいのだ。');
+    throw new Error('音声を作れなかったのだ（' + (data.errorMessage || '不明なエラー') + '）');
+  }
+  for (let waited = 0; ; waited += 1) {
+    const st = await (await fetch(data.audioStatusUrl, { signal, cache: 'no-store' })).json();
+    if (st.isAudioReady) return data.mp3DownloadUrl;
+    if (st.isAudioError) throw new Error('音声の生成に失敗したのだ。');
+    if (waited > 180) throw new Error('音声の生成に時間がかかりすぎているのだ。');
+    onWait?.(`音声を作っているのだ… ${waited}秒`);
+    await sleep(1000, signal);
+  }
+}
+
+function applyAudioSettings() {
+  const a = session?.audio;
+  if (!a) return;
+  a.playbackRate = Number(els.speed.value);
+  a.volume = Number(els.volume.value);
+}
+
+function renderChunks(list) {
+  els.chunks.innerHTML = '';
+  list.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const p = document.createElement('p');
+    p.textContent = s;
+    row.appendChild(p);
+    row.addEventListener('click', e => { if (e.target.tagName !== 'A') start(i); });
+    els.chunks.appendChild(row);
+  });
+  els.chunkCard.hidden = list.length === 0;
+}
+
+function addLink(i, url) {
+  const row = els.chunks.children[i];
+  if (!row || row.querySelector('a')) return;
+  const a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'MP3';
+  row.appendChild(a);
+}
+
+function mark(i, total) {
+  [...els.chunks.children].forEach((row, j) => {
+    row.classList.toggle('now', j === i);
+    row.classList.toggle('done', j < i);
+  });
+  els.chunks.children[i]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  els.bar.style.width = (total ? (i / total) * 100 : 0) + '%';
+}
+
+function setPlaying(on) {
+  els.play.disabled = on;
+  els.pause.disabled = !on;
+  els.stop.disabled = !on;
+  els.pause.textContent = '⏸ 一時停止';
+}
+
+function stop() {
+  if (!session) return;
+  session.abort.abort();
+  if (session.audio) { session.audio.pause(); session.audio.removeAttribute('src'); }
+  session = null;
+  setPlaying(false);
+  setMsg('');
+}
+
+async function start(from = 0) {
+  stop();
+  const list = splitText(els.text.value);
+  if (!list.length) { setMsg('テキストを入力してほしいのだ。', true); return; }
+  renderChunks(list);
+
+  const me = { abort: new AbortController(), audio: new Audio(), paused: false };
+  me.audio.preservesPitch = true;
+  session = me;
+  setPlaying(true);
+  // iOSで後から再生できるよう、クリック直後に一度audioを有効にしておく
+  me.audio.play().catch(() => {});
+
+  // 再生中に次のまとまりを1つ先に作っておく
+  const cache = new Map();
+  const get = i => {
+    if (i >= list.length) return null;
+    if (!cache.has(i)) {
+      const onWait = t => { if (session === me && !me.playingIndex) setMsg(t); };
+      const p = synth(list[i], me.abort.signal, onWait).then(url => { addLink(i, url); return url; });
+      p.catch(() => {});
+      cache.set(i, p);
+    }
+    return cache.get(i);
+  };
+
+  try {
+    for (let i = from; i < list.length; i++) {
+      mark(i, list.length);
+      me.playingIndex = 0;
+      const url = await get(i);
+      if (session !== me) return;
+      me.playingIndex = i + 1;
+      setMsg('読み上げ中なのだ');
+      me.audio.src = url;
+      applyAudioSettings();
+      await new Promise((resolve, reject) => {
+        me.audio.onended = resolve;
+        me.audio.onerror = () => reject(new Error('音声を再生できなかったのだ。'));
+        me.abort.signal.addEventListener('abort', resolve, { once: true });
+        me.audio.play().then(() => get(i + 1)).catch(reject);
+      });
+      if (session !== me) return;
+    }
+    els.bar.style.width = '100%';
+    [...els.chunks.children].forEach(row => { row.classList.remove('now'); row.classList.add('done'); });
+    setMsg('読み終わったのだ！');
+  } catch (e) {
+    if (e.name !== 'AbortError' && session === me) setMsg('エラー: ' + e.message, true);
+  } finally {
+    if (session === me) { session = null; setPlaying(false); }
+  }
+}
+
+function togglePause() {
+  if (!session?.audio?.src) return;
+  if (session.paused) { session.audio.play(); els.pause.textContent = '⏸ 一時停止'; }
+  else { session.audio.pause(); els.pause.textContent = '▶ 再開'; }
+  session.paused = !session.paused;
+}
+
+els.play.addEventListener('click', () => start(0));
+els.pause.addEventListener('click', togglePause);
+els.stop.addEventListener('click', stop);
+</script>
+</body>
+</html>
